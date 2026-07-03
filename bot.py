@@ -25,8 +25,8 @@ def run_flask():
 
 threading.Thread(target=run_flask, daemon=True).start()
 
-# --- БАЗА ДАННЫХ (С СОХРАНЕНИЕМ НА ДИСК) ---
-DB_PATH = '/tmp/casino.db'  # Render сохраняет /tmp
+# --- БАЗА ДАННЫХ ---
+DB_PATH = '/tmp/casino.db'
 
 conn = sqlite3.connect(DB_PATH, check_same_thread=False)
 cursor = conn.cursor()
@@ -36,13 +36,15 @@ CREATE TABLE IF NOT EXISTS users (
     user_id INTEGER PRIMARY KEY,
     name TEXT,
     balance INTEGER DEFAULT 1000,
-    work TEXT DEFAULT 'Безработный',
+    work TEXT DEFAULT NULL,
     family TEXT DEFAULT NULL,
     daily_bonus TEXT DEFAULT NULL,
     penalty_until TEXT DEFAULT NULL,
     ban_until TEXT DEFAULT NULL,
     total_earned INTEGER DEFAULT 0,
-    last_work TEXT DEFAULT NULL
+    last_work TEXT DEFAULT NULL,
+    subscribed INTEGER DEFAULT 0,
+    sub_check_time TEXT DEFAULT NULL
 )
 ''')
 
@@ -127,7 +129,9 @@ def start(message):
     bot.send_message(message.chat.id, 
         "🎰 *Добро пожаловать в Casino Empire!*\n\n"
         "👋 Я бот-казино с семьями, работой и дуэлями!\n"
-        "📋 Введи /help или /помощь чтобы увидеть все команды.",
+        "📋 Введи /help или /помощь чтобы увидеть все команды.\n\n"
+        "🔥 *КВЕСТ:* Подпишись на https://t.me/rengadeup и получи 1000₽!\n"
+        "Используй /подписка после подписки.",
         parse_mode='Markdown')
 
 @bot.message_handler(commands=['help', 'помощь'])
@@ -139,10 +143,12 @@ def help_command(message):
 
 👤 *ПРОФИЛЬ И ДЕНЬГИ*
 ├ /profile или /профиль — твой профиль
+├ /profile [ID] или /профиль [ID] — профиль игрока
 ├ /balance или /баланс — узнать баланс
-└ /pay [сумма] или /платёж [сумма] — перевести (ответь на сообщение)
+├ /pay [сумма] или /платёж [сумма] — перевести (ответь на сообщение)
+└ /top или /топ — топ 10 игроков по деньгам
 
-💼 *РАБОТА* (с разным КД)
+💼 *РАБОТА*
 ├ /developer или /разработчик — 💻 Разработчик (100-200₽, КД 30 мин)
 ├ /courier или /курьер — 📦 Курьер (150-300₽, КД 1 час)
 ├ /seller или /продавец — 🛒 Продавец (200-400₽, КД 2 часа)
@@ -164,8 +170,9 @@ def help_command(message):
 ⚔️ *ДУЭЛИ*
 └ /duel [сумма] или /дуэль [сумма] — вызвать на дуэль (ответь на сообщение)
 
-🎁 *БОНУСЫ*
-└ /bonus или /бонус — ежедневный бонус (100-500₽)
+🎁 *БОНУСЫ И КВЕСТЫ*
+├ /bonus или /бонус — ежедневный бонус (100-500₽)
+└ /подписка — проверить подписку на канал (награда 1000₽)
 
 ℹ️ *ИНФО*
 └ /help или /помощь — это меню
@@ -177,43 +184,74 @@ def help_command(message):
 
 @bot.message_handler(commands=['profile', 'профиль'])
 def profile(message):
-    user = get_user(message.from_user.id)
-    if user:
-        balance = user[2]
-        work = user[3] if user[3] else 'Безработный'
-        family = user[4] if user[4] else 'Нет'
-        penalty = '⚠️ Да' if is_penalized(message.from_user.id) else '✅ Нет'
-        text = f"""
-👤 *Твой профиль*
+    args = message.text.split()
+    user_id = message.from_user.id
+    
+    # Если указан ID другого игрока
+    if len(args) > 1:
+        try:
+            target_id = int(args[1])
+        except:
+            bot.send_message(message.chat.id, '❌ Используй: `/profile [ID]` или `/профиль [ID]`', parse_mode='Markdown')
+            return
+    else:
+        target_id = user_id
+    
+    user = get_user(target_id)
+    if not user:
+        bot.send_message(message.chat.id, '❌ Пользователь не найден!')
+        return
+    
+    balance = user[2]
+    work = user[3] if user[3] else 'Нет'
+    family = user[4] if user[4] else 'Нет'
+    penalty = '⚠️ Да' if is_penalized(target_id) else '✅ Нет'
+    subscribed = '✅ Да' if user[9] == 1 else '❌ Нет'
+    
+    text = f"""
+👤 *Профиль игрока*
 
 ━━━━━━━━━━━━━━━━━━━━
 💰 *Баланс:* {balance}₽
 💼 *Работа:* {work}
 🏠 *Семья:* {family}
 ⚠️ *Штраф:* {penalty}
+📢 *Подписка:* {subscribed}
 ━━━━━━━━━━━━━━━━━━━━
 """
-        bot.send_message(message.chat.id, text, parse_mode='Markdown')
-    else:
-        register_user(message.from_user.id, message.from_user.first_name)
-        bot.send_message(message.chat.id, "❌ Ты не зарегистрирован! Напиши /start")
+    bot.send_message(message.chat.id, text, parse_mode='Markdown')
 
 @bot.message_handler(commands=['balance', 'баланс'])
 def balance(message):
     bal = get_balance(message.from_user.id)
     bot.send_message(message.chat.id, f'💰 Твой баланс: *{bal}₽*', parse_mode='Markdown')
 
+@bot.message_handler(commands=['top', 'топ'])
+def top_players(message):
+    cursor.execute('SELECT user_id, name, balance FROM users ORDER BY balance DESC LIMIT 10')
+    tops = cursor.fetchall()
+    
+    if not tops:
+        bot.send_message(message.chat.id, '📭 Пока нет игроков!')
+        return
+    
+    text = "🏆 *ТОП 10 ИГРОКОВ ПО ДЕНЬГАМ*\n━━━━━━━━━━━━━━━━━━━━\n"
+    for i, (user_id, name, balance) in enumerate(tops, 1):
+        medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
+        text += f"{medal} *{name}* — {balance}₽\n"
+    
+    bot.send_message(message.chat.id, text, parse_mode='Markdown')
+
 # --- РАБОТЫ ---
 def work_command(message, job_name, min_pay, max_pay, cooldown_hours):
     user_id = message.from_user.id
-    # Проверка на штраф
+    
     if is_penalized(user_id):
         bonus = random.randint(5, 15)
         bot.send_message(message.chat.id, f'⚠️ Ты под штрафом! Зарплата уменьшена на {bonus}%')
         min_pay = int(min_pay * (1 - bonus/100))
         max_pay = int(max_pay * (1 - bonus/100))
     
-    # Проверка КД
     if not can_work(user_id, cooldown_hours):
         cursor.execute('SELECT last_work FROM users WHERE user_id = ?', (user_id,))
         res = cursor.fetchone()
@@ -223,7 +261,6 @@ def work_command(message, job_name, min_pay, max_pay, cooldown_hours):
             bot.send_message(message.chat.id, f'⏳ Отдыхай! Следующая работа через {remaining} мин.')
         return
     
-    # Выдача зарплаты
     salary = random.randint(min_pay, max_pay)
     update_balance(user_id, salary)
     set_last_work(user_id)
@@ -250,7 +287,6 @@ def welder(message):
 def bonus(message):
     user_id = message.from_user.id
     
-    # Проверка КД
     if not can_bonus(user_id):
         cursor.execute('SELECT daily_bonus FROM users WHERE user_id = ?', (user_id,))
         res = cursor.fetchone()
@@ -264,6 +300,45 @@ def bonus(message):
     update_balance(user_id, amount)
     set_bonus(user_id)
     bot.send_message(message.chat.id, f'🎁 Ты получил ежедневный бонус: *{amount}₽*', parse_mode='Markdown')
+
+# --- КВЕСТ: ПОДПИСКА ---
+@bot.message_handler(commands=['подписка'])
+def check_subscription(message):
+    user_id = message.from_user.id
+    CHANNEL_ID = '@rengadeup'  # или ID канала (например -1001234567890)
+    
+    try:
+        # Проверяем подписку
+        member = bot.get_chat_member(CHANNEL_ID, user_id)
+        
+        if member.status in ['member', 'creator', 'administrator']:
+            # Проверяем, не получал ли уже награду
+            cursor.execute('SELECT subscribed FROM users WHERE user_id = ?', (user_id,))
+            res = cursor.fetchone()
+            
+            if res and res[0] == 1:
+                bot.send_message(message.chat.id, '❌ Ты уже получил награду за подписку!')
+            else:
+                # Даём награду
+                update_balance(user_id, 1000)
+                cursor.execute('UPDATE users SET subscribed = 1 WHERE user_id = ?', (user_id,))
+                cursor.execute('UPDATE users SET sub_check_time = ? WHERE user_id = ?', (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), user_id))
+                conn.commit()
+                bot.send_message(message.chat.id, '✅ Ты подписан на канал!\n🎁 Получил 1000₽ в подарок!')
+        else:
+            # Если отписался, но награда была получена
+            cursor.execute('SELECT subscribed FROM users WHERE user_id = ?', (user_id,))
+            res = cursor.fetchone()
+            if res and res[0] == 1:
+                # Штраф 3000
+                update_balance(user_id, -3000)
+                cursor.execute('UPDATE users SET subscribed = 0 WHERE user_id = ?', (user_id,))
+                conn.commit()
+                bot.send_message(message.chat.id, '❌ Ты отписался от канала!\n💰 Штраф: -3000₽')
+            else:
+                bot.send_message(message.chat.id, '❌ Ты не подписан на канал!\n📢 Подпишись: https://t.me/rengadeup')
+    except Exception as e:
+        bot.send_message(message.chat.id, f'❌ Ошибка проверки подписки. Убедись, что канал существует.\n📢 Ссылка: https://t.me/rengadeup')
 
 # --- КАЗИНО ---
 @bot.message_handler(commands=['slots', 'слоты'])
