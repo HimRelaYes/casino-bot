@@ -6,9 +6,24 @@ import time
 from datetime import datetime, timedelta
 import os
 import sys
+from flask import Flask
+import threading
 
 TOKEN = '8217975863:AAEScN82IIMAq2hi7YtI_K_TfXqBd0NXlMk'  # ВСТАВЬ НОВЫЙ ТОКЕН!
 bot = telebot.TeleBot(TOKEN)
+
+# --- ВЕБ-СЕРВЕР ДЛЯ RENDER ---
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "✅ БОТ РАБОТАЕТ!"
+
+def run_flask():
+    app.run(host='0.0.0.0', port=10000)
+
+# Запускаем Flask в отдельном потоке
+threading.Thread(target=run_flask, daemon=True).start()
 
 # --- БАЗА ДАННЫХ ---
 conn = sqlite3.connect('casino.db', check_same_thread=False)
