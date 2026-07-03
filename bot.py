@@ -9,6 +9,8 @@ import sys
 from flask import Flask
 import threading
 import json
+import base64
+import requests
 
 TOKEN = '8217975863:AAEScN82IIMAq2hi7YtI_K_TfXqBd0NXlMk'  # ВСТАВЬ СВОЙ ТОКЕН!
 bot = telebot.TeleBot(TOKEN)
@@ -25,9 +27,54 @@ def run_flask():
 
 threading.Thread(target=run_flask, daemon=True).start()
 
-# --- БАЗА ДАННЫХ ---
-DB_PATH = '/tmp/casino.db'
+# --- НАСТРОЙКИ GITHUB БЭКАПА ---
+GITHUB_TOKEN = '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'  # Создай в GitHub Settings → Developer settings → Personal access tokens (classic)
+REPO_NAME = 'HimRelaYes/casino-bot'  # Например 'HimRelay/casino-bot'
+FILE_PATH = 'casino.db'
+DB_PATH = 'casino.db'
 
+# --- СОХРАНЕНИЕ В GITHUB ---
+def backup_to_github():
+    try:
+        if not os.path.exists(DB_PATH):
+            return
+        with open(DB_PATH, 'rb') as f:
+            content = base64.b64encode(f.read()).decode()
+        url = f'https://api.github.com/repos/{REPO_NAME}/contents/{FILE_PATH}'
+        headers = {'Authorization': f'token {GITHUB_TOKEN}', 'Accept': 'application/vnd.github.v3+json'}
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            sha = response.json()['sha']
+            data = {'message': f'Автобэкап БД {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}', 'content': content, 'sha': sha}
+        else:
+            data = {'message': 'Создание БД при первом запуске', 'content': content}
+        requests.put(url, headers=headers, json=data)
+        print('✅ БД сохранена в GitHub')
+    except Exception as e:
+        print(f'❌ Ошибка бэкапа: {e}')
+
+def restore_from_github():
+    try:
+        url = f'https://api.github.com/repos/{REPO_NAME}/contents/{FILE_PATH}'
+        headers = {'Authorization': f'token {GITHUB_TOKEN}'}
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            content = base64.b64decode(response.json()['content'])
+            with open(DB_PATH, 'wb') as f:
+                f.write(content)
+            print('✅ БД восстановлена из GitHub')
+            return True
+    except Exception as e:
+        print(f'⚠️ Ошибка восстановления: {e}')
+        return False
+
+def auto_backup():
+    while True:
+        time.sleep(300)
+        backup_to_github()
+
+# --- БАЗА ДАННЫХ ---
+restore_from_github()
 conn = sqlite3.connect(DB_PATH, check_same_thread=False)
 cursor = conn.cursor()
 
@@ -66,6 +113,8 @@ CREATE TABLE IF NOT EXISTS family_members (
 ''')
 conn.commit()
 
+threading.Thread(target=auto_backup, daemon=True).start()
+
 # --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
 def get_user(user_id):
     cursor.execute('SELECT * FROM users WHERE user_id = ?', (user_id,))
@@ -74,6 +123,7 @@ def get_user(user_id):
 def register_user(user_id, name):
     cursor.execute('INSERT OR IGNORE INTO users (user_id, name) VALUES (?, ?)', (user_id, name))
     conn.commit()
+    backup_to_github()
 
 def get_balance(user_id):
     cursor.execute('SELECT balance FROM users WHERE user_id = ?', (user_id,))
@@ -83,11 +133,13 @@ def get_balance(user_id):
 def update_balance(user_id, amount):
     cursor.execute('UPDATE users SET balance = balance + ? WHERE user_id = ?', (amount, user_id))
     conn.commit()
+    backup_to_github()
 
 def add_penalty(user_id, days):
     until = datetime.now() + timedelta(days=days)
     cursor.execute('UPDATE users SET penalty_until = ? WHERE user_id = ?', (until.strftime('%Y-%m-%d %H:%M:%S'), user_id))
     conn.commit()
+    backup_to_github()
 
 def is_penalized(user_id):
     cursor.execute('SELECT penalty_until FROM users WHERE user_id = ?', (user_id,))
@@ -108,6 +160,7 @@ def can_work(user_id, cooldown_hours):
 def set_last_work(user_id):
     cursor.execute('UPDATE users SET last_work = ? WHERE user_id = ?', (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), user_id))
     conn.commit()
+    backup_to_github()
 
 def can_bonus(user_id):
     cursor.execute('SELECT daily_bonus FROM users WHERE user_id = ?', (user_id,))
@@ -120,6 +173,7 @@ def can_bonus(user_id):
 def set_bonus(user_id):
     cursor.execute('UPDATE users SET daily_bonus = ? WHERE user_id = ?', (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), user_id))
     conn.commit()
+    backup_to_github()
 
 # --- КОМАНДЫ ---
 @bot.message_handler(commands=['start', 'старт'])
@@ -186,8 +240,6 @@ def help_command(message):
 def profile(message):
     args = message.text.split()
     user_id = message.from_user.id
-    
-    # Если указан ID другого игрока
     if len(args) > 1:
         try:
             target_id = int(args[1])
@@ -196,24 +248,19 @@ def profile(message):
             return
     else:
         target_id = user_id
-    
     user = get_user(target_id)
     if not user:
         bot.send_message(message.chat.id, '❌ Пользователь не найден!')
         return
-    
     balance = user[2]
-    work = user[3] if user[3] else 'Нет'
     family = user[4] if user[4] else 'Нет'
     penalty = '⚠️ Да' if is_penalized(target_id) else '✅ Нет'
     subscribed = '✅ Да' if user[9] == 1 else '❌ Нет'
-    
     text = f"""
 👤 *Профиль игрока*
 
 ━━━━━━━━━━━━━━━━━━━━
 💰 *Баланс:* {balance}₽
-💼 *Работа:* {work}
 🏠 *Семья:* {family}
 ⚠️ *Штраф:* {penalty}
 📢 *Подписка:* {subscribed}
@@ -230,28 +277,22 @@ def balance(message):
 def top_players(message):
     cursor.execute('SELECT user_id, name, balance FROM users ORDER BY balance DESC LIMIT 10')
     tops = cursor.fetchall()
-    
     if not tops:
         bot.send_message(message.chat.id, '📭 Пока нет игроков!')
         return
-    
     text = "🏆 *ТОП 10 ИГРОКОВ ПО ДЕНЬГАМ*\n━━━━━━━━━━━━━━━━━━━━\n"
     for i, (user_id, name, balance) in enumerate(tops, 1):
         medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
         text += f"{medal} *{name}* — {balance}₽\n"
-    
     bot.send_message(message.chat.id, text, parse_mode='Markdown')
 
-# --- РАБОТЫ ---
 def work_command(message, job_name, min_pay, max_pay, cooldown_hours):
     user_id = message.from_user.id
-    
     if is_penalized(user_id):
         bonus = random.randint(5, 15)
         bot.send_message(message.chat.id, f'⚠️ Ты под штрафом! Зарплата уменьшена на {bonus}%')
         min_pay = int(min_pay * (1 - bonus/100))
         max_pay = int(max_pay * (1 - bonus/100))
-    
     if not can_work(user_id, cooldown_hours):
         cursor.execute('SELECT last_work FROM users WHERE user_id = ?', (user_id,))
         res = cursor.fetchone()
@@ -260,7 +301,6 @@ def work_command(message, job_name, min_pay, max_pay, cooldown_hours):
             remaining = int((timedelta(hours=cooldown_hours) - (datetime.now() - last)).seconds // 60)
             bot.send_message(message.chat.id, f'⏳ Отдыхай! Следующая работа через {remaining} мин.')
         return
-    
     salary = random.randint(min_pay, max_pay)
     update_balance(user_id, salary)
     set_last_work(user_id)
@@ -282,11 +322,9 @@ def seller(message):
 def welder(message):
     work_command(message, '👨‍🏭 Сварщик', 300, 500, 4)
 
-# --- /bonus ---
 @bot.message_handler(commands=['bonus', 'бонус'])
 def bonus(message):
     user_id = message.from_user.id
-    
     if not can_bonus(user_id):
         cursor.execute('SELECT daily_bonus FROM users WHERE user_id = ?', (user_id,))
         res = cursor.fetchone()
@@ -295,52 +333,43 @@ def bonus(message):
             remaining = int((timedelta(days=1) - (datetime.now() - last)).seconds // 3600)
             bot.send_message(message.chat.id, f'⏳ Бонус уже получен! Следующий через {remaining} ч.')
         return
-    
     amount = random.randint(100, 500)
     update_balance(user_id, amount)
     set_bonus(user_id)
     bot.send_message(message.chat.id, f'🎁 Ты получил ежедневный бонус: *{amount}₽*', parse_mode='Markdown')
 
-# --- КВЕСТ: ПОДПИСКА ---
 @bot.message_handler(commands=['подписка'])
 def check_subscription(message):
     user_id = message.from_user.id
-    CHANNEL_ID = '@rengadeup'  # или ID канала (например -1001234567890)
-    
+    CHANNEL_ID = '@rengadeup'
     try:
-        # Проверяем подписку
         member = bot.get_chat_member(CHANNEL_ID, user_id)
-        
         if member.status in ['member', 'creator', 'administrator']:
-            # Проверяем, не получал ли уже награду
             cursor.execute('SELECT subscribed FROM users WHERE user_id = ?', (user_id,))
             res = cursor.fetchone()
-            
             if res and res[0] == 1:
                 bot.send_message(message.chat.id, '❌ Ты уже получил награду за подписку!')
             else:
-                # Даём награду
                 update_balance(user_id, 1000)
                 cursor.execute('UPDATE users SET subscribed = 1 WHERE user_id = ?', (user_id,))
                 cursor.execute('UPDATE users SET sub_check_time = ? WHERE user_id = ?', (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), user_id))
                 conn.commit()
+                backup_to_github()
                 bot.send_message(message.chat.id, '✅ Ты подписан на канал!\n🎁 Получил 1000₽ в подарок!')
         else:
-            # Если отписался, но награда была получена
             cursor.execute('SELECT subscribed FROM users WHERE user_id = ?', (user_id,))
             res = cursor.fetchone()
             if res and res[0] == 1:
-                # Штраф 3000
                 update_balance(user_id, -3000)
                 cursor.execute('UPDATE users SET subscribed = 0 WHERE user_id = ?', (user_id,))
                 conn.commit()
+                backup_to_github()
                 bot.send_message(message.chat.id, '❌ Ты отписался от канала!\n💰 Штраф: -3000₽')
             else:
                 bot.send_message(message.chat.id, '❌ Ты не подписан на канал!\n📢 Подпишись: https://t.me/rengadeup')
     except Exception as e:
         bot.send_message(message.chat.id, f'❌ Ошибка проверки подписки. Убедись, что канал существует.\n📢 Ссылка: https://t.me/rengadeup')
 
-# --- КАЗИНО ---
 @bot.message_handler(commands=['slots', 'слоты'])
 def slots(message):
     args = message.text.split()
@@ -462,7 +491,6 @@ def roulette(message):
         update_balance(user_id, -bet)
         bot.send_message(message.chat.id, f'🟢 Выпал *0* (ЗЕЛЁНЫЙ)!\n❌ Ты проиграл *{bet}₽*!', parse_mode='Markdown')
 
-# --- /pay ---
 @bot.message_handler(commands=['pay', 'платёж'])
 def pay(message):
     args = message.text.split()
@@ -493,7 +521,6 @@ def pay(message):
     bot.send_message(message.chat.id, f'✅ Переведено {amount}₽ пользователю @{message.reply_to_message.from_user.username or target_id}')
     bot.send_message(target_id, f'💰 Ты получил {amount}₽ от @{message.from_user.username or user_id}')
 
-# --- /duel ---
 @bot.message_handler(commands=['duel', 'дуэль'])
 def duel(message):
     if not message.reply_to_message:
@@ -552,7 +579,6 @@ def duel_callback(call):
     bot.edit_message_text(f'⚔️ *Дуэль завершена!*\n🥇 Победитель: @{call.from_user.username or winner}\n💰 Выигрыш: {amount}₽', call.message.chat.id, call.message.message_id, parse_mode='Markdown')
     bot.answer_callback_query(call.id, 'Дуэль окончена!')
 
-# --- СЕМЬЯ ---
 @bot.message_handler(commands=['семьясоздать'])
 def family_create(message):
     args = message.text.split(maxsplit=1)
@@ -569,6 +595,7 @@ def family_create(message):
     cursor.execute('INSERT INTO family_members (user_id, family_name) VALUES (?, ?)', (user_id, name))
     cursor.execute('UPDATE users SET family = ? WHERE user_id = ?', (name, user_id))
     conn.commit()
+    backup_to_github()
     bot.send_message(message.chat.id, f'✅ Семья "{name}" создана! Ты её глава.')
 
 @bot.message_handler(commands=['семьявступить'])
@@ -586,6 +613,7 @@ def family_join(message):
     cursor.execute('INSERT INTO family_members (user_id, family_name) VALUES (?, ?)', (user_id, name))
     cursor.execute('UPDATE users SET family = ? WHERE user_id = ?', (name, user_id))
     conn.commit()
+    backup_to_github()
     bot.send_message(message.chat.id, f'✅ Ты вступил в семью "{name}"!')
 
 @bot.message_handler(commands=['семьявыйти'])
@@ -606,6 +634,7 @@ def family_leave(message):
     else:
         bot.send_message(message.chat.id, f'👋 Ты покинул семью "{family_name}".')
     conn.commit()
+    backup_to_github()
 
 @bot.message_handler(commands=['семьясписок'])
 def family_list(message):
@@ -646,3 +675,5 @@ if __name__ == '__main__':
             print(f'❌ Ошибка: {e}')
             print('🔄 Перезапуск через 5 секунд...')
             time.sleep(5)
+        finally:
+            backup_to_github()
