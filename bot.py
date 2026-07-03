@@ -8,8 +8,9 @@ import os
 import sys
 from flask import Flask
 import threading
+import json
 
-TOKEN = '8217975863:AAEScN82IIMAq2hi7YtI_K_TfXqBd0NXlMk'  # ВСТАВЬ НОВЫЙ ТОКЕН!
+TOKEN = '8217975863:AAEScN82IIMAq2hi7YtI_K_TfXqBd0NXlMk'  # ВСТАВЬ СВОЙ ТОКЕН!
 bot = telebot.TeleBot(TOKEN)
 
 # --- ВЕБ-СЕРВЕР ДЛЯ RENDER ---
@@ -22,11 +23,12 @@ def home():
 def run_flask():
     app.run(host='0.0.0.0', port=10000)
 
-# Запускаем Flask в отдельном потоке
 threading.Thread(target=run_flask, daemon=True).start()
 
-# --- БАЗА ДАННЫХ ---
-conn = sqlite3.connect('casino.db', check_same_thread=False)
+# --- БАЗА ДАННЫХ (С СОХРАНЕНИЕМ НА ДИСК) ---
+DB_PATH = '/tmp/casino.db'  # Render сохраняет /tmp
+
+conn = sqlite3.connect(DB_PATH, check_same_thread=False)
 cursor = conn.cursor()
 
 cursor.execute('''
@@ -105,6 +107,18 @@ def set_last_work(user_id):
     cursor.execute('UPDATE users SET last_work = ? WHERE user_id = ?', (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), user_id))
     conn.commit()
 
+def can_bonus(user_id):
+    cursor.execute('SELECT daily_bonus FROM users WHERE user_id = ?', (user_id,))
+    res = cursor.fetchone()
+    if res and res[0]:
+        last = datetime.strptime(res[0], '%Y-%m-%d %H:%M:%S')
+        return datetime.now() - last >= timedelta(days=1)
+    return True
+
+def set_bonus(user_id):
+    cursor.execute('UPDATE users SET daily_bonus = ? WHERE user_id = ?', (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), user_id))
+    conn.commit()
+
 # --- КОМАНДЫ ---
 @bot.message_handler(commands=['start', 'старт'])
 def start(message):
@@ -141,11 +155,11 @@ def help_command(message):
 └ /roulette [ставка] или /рулетка [ставка] — 🔴 Рулетка
 
 🏠 *СЕМЬЯ*
-├ /family_create или /семья_создать [название] — создать семью
-├ /family_join или /семья_вступить [название] — вступить в семью
-├ /family_leave или /семья_выйти — выйти из семьи
-├ /family_list или /семья_список — список семей
-└ /family_balance или /семья_баланс — баланс семьи
+├ /семьясоздать [название] — создать семью
+├ /семьявступить [название] — вступить в семью
+├ /семьявыйти — выйти из семьи
+├ /семьясписок — список всех семей
+└ /семьябаланс — баланс семьи
 
 ⚔️ *ДУЭЛИ*
 └ /duel [сумма] или /дуэль [сумма] — вызвать на дуэль (ответь на сообщение)
@@ -180,6 +194,9 @@ def profile(message):
 ━━━━━━━━━━━━━━━━━━━━
 """
         bot.send_message(message.chat.id, text, parse_mode='Markdown')
+    else:
+        register_user(message.from_user.id, message.from_user.first_name)
+        bot.send_message(message.chat.id, "❌ Ты не зарегистрирован! Напиши /start")
 
 @bot.message_handler(commands=['balance', 'баланс'])
 def balance(message):
@@ -189,18 +206,24 @@ def balance(message):
 # --- РАБОТЫ ---
 def work_command(message, job_name, min_pay, max_pay, cooldown_hours):
     user_id = message.from_user.id
+    # Проверка на штраф
     if is_penalized(user_id):
         bonus = random.randint(5, 15)
         bot.send_message(message.chat.id, f'⚠️ Ты под штрафом! Зарплата уменьшена на {bonus}%')
         min_pay = int(min_pay * (1 - bonus/100))
         max_pay = int(max_pay * (1 - bonus/100))
+    
+    # Проверка КД
     if not can_work(user_id, cooldown_hours):
         cursor.execute('SELECT last_work FROM users WHERE user_id = ?', (user_id,))
         res = cursor.fetchone()
-        last = datetime.strptime(res[0], '%Y-%m-%d %H:%M:%S')
-        remaining = int((timedelta(hours=cooldown_hours) - (datetime.now() - last)).seconds // 60)
-        bot.send_message(message.chat.id, f'⏳ Отдыхай! Следующая работа через {remaining} мин.')
+        if res and res[0]:
+            last = datetime.strptime(res[0], '%Y-%m-%d %H:%M:%S')
+            remaining = int((timedelta(hours=cooldown_hours) - (datetime.now() - last)).seconds // 60)
+            bot.send_message(message.chat.id, f'⏳ Отдыхай! Следующая работа через {remaining} мин.')
         return
+    
+    # Выдача зарплаты
     salary = random.randint(min_pay, max_pay)
     update_balance(user_id, salary)
     set_last_work(user_id)
@@ -226,18 +249,20 @@ def welder(message):
 @bot.message_handler(commands=['bonus', 'бонус'])
 def bonus(message):
     user_id = message.from_user.id
-    cursor.execute('SELECT daily_bonus FROM users WHERE user_id = ?', (user_id,))
-    res = cursor.fetchone()
-    if res and res[0]:
-        last = datetime.strptime(res[0], '%Y-%m-%d %H:%M:%S')
-        if datetime.now() - last < timedelta(days=1):
-            remaining = (timedelta(days=1) - (datetime.now() - last)).seconds // 3600
+    
+    # Проверка КД
+    if not can_bonus(user_id):
+        cursor.execute('SELECT daily_bonus FROM users WHERE user_id = ?', (user_id,))
+        res = cursor.fetchone()
+        if res and res[0]:
+            last = datetime.strptime(res[0], '%Y-%m-%d %H:%M:%S')
+            remaining = int((timedelta(days=1) - (datetime.now() - last)).seconds // 3600)
             bot.send_message(message.chat.id, f'⏳ Бонус уже получен! Следующий через {remaining} ч.')
-            return
+        return
+    
     amount = random.randint(100, 500)
     update_balance(user_id, amount)
-    cursor.execute('UPDATE users SET daily_bonus = ? WHERE user_id = ?', (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), user_id))
-    conn.commit()
+    set_bonus(user_id)
     bot.send_message(message.chat.id, f'🎁 Ты получил ежедневный бонус: *{amount}₽*', parse_mode='Markdown')
 
 # --- КАЗИНО ---
@@ -251,6 +276,9 @@ def slots(message):
         bet = int(args[1])
     except:
         bot.send_message(message.chat.id, '❌ Ставка должна быть числом!')
+        return
+    if bet <= 0:
+        bot.send_message(message.chat.id, '❌ Ставка должна быть больше 0!')
         return
     user_id = message.from_user.id
     if get_balance(user_id) < bet:
@@ -282,6 +310,9 @@ def dice(message):
     except:
         bot.send_message(message.chat.id, '❌ Ставка должна быть числом!')
         return
+    if bet <= 0:
+        bot.send_message(message.chat.id, '❌ Ставка должна быть больше 0!')
+        return
     user_id = message.from_user.id
     if get_balance(user_id) < bet:
         bot.send_message(message.chat.id, '❌ Недостаточно средств!')
@@ -308,6 +339,9 @@ def wheel(message):
     except:
         bot.send_message(message.chat.id, '❌ Ставка должна быть числом!')
         return
+    if bet <= 0:
+        bot.send_message(message.chat.id, '❌ Ставка должна быть больше 0!')
+        return
     user_id = message.from_user.id
     if get_balance(user_id) < bet:
         bot.send_message(message.chat.id, '❌ Недостаточно средств!')
@@ -333,6 +367,9 @@ def roulette(message):
         bet = int(args[1])
     except:
         bot.send_message(message.chat.id, '❌ Ставка должна быть числом!')
+        return
+    if bet <= 0:
+        bot.send_message(message.chat.id, '❌ Ставка должна быть больше 0!')
         return
     user_id = message.from_user.id
     if get_balance(user_id) < bet:
@@ -441,24 +478,11 @@ def duel_callback(call):
     bot.answer_callback_query(call.id, 'Дуэль окончена!')
 
 # --- СЕМЬЯ ---
-@bot.message_handler(commands=['family', 'семья'])
-def family_menu(message):
-    text = """
-🏠 *Управление семьёй*
-
-/family_create [название] или /семья_создать [название] — создать семью
-/family_join [название] или /семья_вступить [название] — вступить в семью
-/family_leave или /семья_выйти — выйти из семьи
-/family_list или /семья_список — список всех семей
-/family_balance или /семья_баланс — баланс семьи
-"""
-    bot.send_message(message.chat.id, text, parse_mode='Markdown')
-
-@bot.message_handler(commands=['family_create', 'семья_создать'])
+@bot.message_handler(commands=['семьясоздать'])
 def family_create(message):
     args = message.text.split(maxsplit=1)
     if len(args) < 2:
-        bot.send_message(message.chat.id, '❌ Используй: `/family_create [название]` или `/семья_создать [название]`', parse_mode='Markdown')
+        bot.send_message(message.chat.id, '❌ Используй: `/семьясоздать [название]`', parse_mode='Markdown')
         return
     name = args[1]
     user_id = message.from_user.id
@@ -472,11 +496,11 @@ def family_create(message):
     conn.commit()
     bot.send_message(message.chat.id, f'✅ Семья "{name}" создана! Ты её глава.')
 
-@bot.message_handler(commands=['family_join', 'семья_вступить'])
+@bot.message_handler(commands=['семьявступить'])
 def family_join(message):
     args = message.text.split(maxsplit=1)
     if len(args) < 2:
-        bot.send_message(message.chat.id, '❌ Используй: `/family_join [название]` или `/семья_вступить [название]`', parse_mode='Markdown')
+        bot.send_message(message.chat.id, '❌ Используй: `/семьявступить [название]`', parse_mode='Markdown')
         return
     name = args[1]
     user_id = message.from_user.id
@@ -489,7 +513,7 @@ def family_join(message):
     conn.commit()
     bot.send_message(message.chat.id, f'✅ Ты вступил в семью "{name}"!')
 
-@bot.message_handler(commands=['family_leave', 'семья_выйти'])
+@bot.message_handler(commands=['семьявыйти'])
 def family_leave(message):
     user_id = message.from_user.id
     user = get_user(user_id)
@@ -508,7 +532,7 @@ def family_leave(message):
         bot.send_message(message.chat.id, f'👋 Ты покинул семью "{family_name}".')
     conn.commit()
 
-@bot.message_handler(commands=['family_list', 'семья_список'])
+@bot.message_handler(commands=['семьясписок'])
 def family_list(message):
     cursor.execute('SELECT name FROM families')
     families = cursor.fetchall()
@@ -522,7 +546,7 @@ def family_list(message):
         text += f'🏠 *{f[0]}* — {count} участников\n'
     bot.send_message(message.chat.id, text, parse_mode='Markdown')
 
-@bot.message_handler(commands=['family_balance', 'семья_баланс'])
+@bot.message_handler(commands=['семьябаланс'])
 def family_balance(message):
     user = get_user(message.from_user.id)
     if not user or not user[4]:
