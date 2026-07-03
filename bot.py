@@ -10,12 +10,6 @@ import sys
 TOKEN = '8217975863:AAEScN82IIMAq2hi7YtI_K_TfXqBd0NXlMk'  # ВСТАВЬ НОВЫЙ ТОКЕН!
 bot = telebot.TeleBot(TOKEN)
 
-# --- ПЕРЕЗАПУСК ПРИ ОШИБКЕ ---
-def restart_bot():
-    print('🔄 Перезапуск через 5 секунд...')
-    time.sleep(5)
-    os.execv(sys.executable, ['python'] + sys.argv)
-
 # --- БАЗА ДАННЫХ ---
 conn = sqlite3.connect('casino.db', check_same_thread=False)
 cursor = conn.cursor()
@@ -97,17 +91,17 @@ def set_last_work(user_id):
     conn.commit()
 
 # --- КОМАНДЫ ---
-@bot.message_handler(commands=['start'])
+@bot.message_handler(commands=['start', 'старт'])
 def start(message):
     user_id = message.from_user.id
     register_user(user_id, message.from_user.first_name)
     bot.send_message(message.chat.id, 
         "🎰 *Добро пожаловать в Casino Empire!*\n\n"
         "👋 Я бот-казино с семьями, работой и дуэлями!\n"
-        "📋 Введи /help чтобы увидеть все команды.",
+        "📋 Введи /help или /помощь чтобы увидеть все команды.",
         parse_mode='Markdown')
 
-@bot.message_handler(commands=['help'])
+@bot.message_handler(commands=['help', 'помощь'])
 def help_command(message):
     help_text = """
 🎰 *CASINO EMPIRE — ПОМОЩЬ*
@@ -115,44 +109,44 @@ def help_command(message):
 ━━━━━━━━━━━━━━━━━━━━
 
 👤 *ПРОФИЛЬ И ДЕНЬГИ*
-├ /profile — твой профиль
-├ /balance — узнать баланс
-└ /pay [сумма] — перевести (ответь на сообщение)
+├ /profile или /профиль — твой профиль
+├ /balance или /баланс — узнать баланс
+└ /pay [сумма] или /платёж [сумма] — перевести (ответь на сообщение)
 
 💼 *РАБОТА* (с разным КД)
-├ /developer — 💻 Разработчик (100-200₽, КД 30 мин)
-├ /courier — 📦 Курьер (150-300₽, КД 1 час)
-├ /seller — 🛒 Продавец (200-400₽, КД 2 часа)
-└ /welder — 👨‍🏭 Сварщик (300-500₽, КД 4 часа)
+├ /developer или /разработчик — 💻 Разработчик (100-200₽, КД 30 мин)
+├ /courier или /курьер — 📦 Курьер (150-300₽, КД 1 час)
+├ /seller или /продавец — 🛒 Продавец (200-400₽, КД 2 часа)
+└ /welder или /сварщик — 👨‍🏭 Сварщик (300-500₽, КД 4 часа)
 
 🎰 *КАЗИНО*
-├ /slots [ставка] — 🎰 Слоты
-├ /dice [ставка] — 🎲 Кубики
-├ /wheel [ставка] — 🎡 Колесо фортуны
-└ /roulette [ставка] — 🔴 Рулетка
+├ /slots [ставка] или /слоты [ставка] — 🎰 Слоты
+├ /dice [ставка] или /кубики [ставка] — 🎲 Кубики
+├ /wheel [ставка] или /колесо [ставка] — 🎡 Колесо фортуны
+└ /roulette [ставка] или /рулетка [ставка] — 🔴 Рулетка
 
 🏠 *СЕМЬЯ*
-├ /family_create [название] — создать семью
-├ /family_join [название] — вступить в семью
-├ /family_leave — выйти из семьи
-├ /family_list — список семей
-└ /family_balance — баланс семьи
+├ /family_create или /семья_создать [название] — создать семью
+├ /family_join или /семья_вступить [название] — вступить в семью
+├ /family_leave или /семья_выйти — выйти из семьи
+├ /family_list или /семья_список — список семей
+└ /family_balance или /семья_баланс — баланс семьи
 
 ⚔️ *ДУЭЛИ*
-└ /duel [сумма] — вызвать на дуэль (ответь на сообщение)
+└ /duel [сумма] или /дуэль [сумма] — вызвать на дуэль (ответь на сообщение)
 
 🎁 *БОНУСЫ*
-└ /bonus — ежедневный бонус (100-500₽)
+└ /bonus или /бонус — ежедневный бонус (100-500₽)
 
 ℹ️ *ИНФО*
-└ /help — это меню
+└ /help или /помощь — это меню
 
 ━━━━━━━━━━━━━━━━━━━━
 💡 *Совет:* Работай, копи деньги и становись миллионером! 🚀
 """
     bot.send_message(message.chat.id, help_text, parse_mode='Markdown')
 
-@bot.message_handler(commands=['profile'])
+@bot.message_handler(commands=['profile', 'профиль'])
 def profile(message):
     user = get_user(message.from_user.id)
     if user:
@@ -172,7 +166,7 @@ def profile(message):
 """
         bot.send_message(message.chat.id, text, parse_mode='Markdown')
 
-@bot.message_handler(commands=['balance'])
+@bot.message_handler(commands=['balance', 'баланс'])
 def balance(message):
     bal = get_balance(message.from_user.id)
     bot.send_message(message.chat.id, f'💰 Твой баланс: *{bal}₽*', parse_mode='Markdown')
@@ -197,24 +191,24 @@ def work_command(message, job_name, min_pay, max_pay, cooldown_hours):
     set_last_work(user_id)
     bot.send_message(message.chat.id, f'💼 *{job_name}*\n✅ Ты заработал *{salary}₽*!\n⏳ Следующая работа через {cooldown_hours} ч.', parse_mode='Markdown')
 
-@bot.message_handler(commands=['developer'])
+@bot.message_handler(commands=['developer', 'разработчик'])
 def developer(message):
     work_command(message, '💻 Разработчик', 100, 200, 0.5)
 
-@bot.message_handler(commands=['courier'])
+@bot.message_handler(commands=['courier', 'курьер'])
 def courier(message):
     work_command(message, '📦 Курьер', 150, 300, 1)
 
-@bot.message_handler(commands=['seller'])
+@bot.message_handler(commands=['seller', 'продавец'])
 def seller(message):
     work_command(message, '🛒 Продавец', 200, 400, 2)
 
-@bot.message_handler(commands=['welder'])
+@bot.message_handler(commands=['welder', 'сварщик'])
 def welder(message):
     work_command(message, '👨‍🏭 Сварщик', 300, 500, 4)
 
 # --- /bonus ---
-@bot.message_handler(commands=['bonus'])
+@bot.message_handler(commands=['bonus', 'бонус'])
 def bonus(message):
     user_id = message.from_user.id
     cursor.execute('SELECT daily_bonus FROM users WHERE user_id = ?', (user_id,))
@@ -232,11 +226,11 @@ def bonus(message):
     bot.send_message(message.chat.id, f'🎁 Ты получил ежедневный бонус: *{amount}₽*', parse_mode='Markdown')
 
 # --- КАЗИНО ---
-@bot.message_handler(commands=['slots'])
+@bot.message_handler(commands=['slots', 'слоты'])
 def slots(message):
     args = message.text.split()
     if len(args) < 2:
-        bot.send_message(message.chat.id, '❌ Используй: `/slots [ставка]`', parse_mode='Markdown')
+        bot.send_message(message.chat.id, '❌ Используй: `/slots [ставка]` или `/слоты [ставка]`', parse_mode='Markdown')
         return
     try:
         bet = int(args[1])
@@ -262,11 +256,11 @@ def slots(message):
         update_balance(user_id, -bet)
         bot.send_message(message.chat.id, f'🎰 {result}\n❌ Проигрыш -{bet}₽')
 
-@bot.message_handler(commands=['dice'])
+@bot.message_handler(commands=['dice', 'кубики'])
 def dice(message):
     args = message.text.split()
     if len(args) < 2:
-        bot.send_message(message.chat.id, '❌ Используй: `/dice [ставка]`', parse_mode='Markdown')
+        bot.send_message(message.chat.id, '❌ Используй: `/dice [ставка]` или `/кубики [ставка]`', parse_mode='Markdown')
         return
     try:
         bet = int(args[1])
@@ -288,11 +282,11 @@ def dice(message):
     else:
         bot.send_message(message.chat.id, f'🎲 Ты: {user_roll} | Бот: {bot_roll}\n🤝 Ничья!')
 
-@bot.message_handler(commands=['wheel'])
+@bot.message_handler(commands=['wheel', 'колесо'])
 def wheel(message):
     args = message.text.split()
     if len(args) < 2:
-        bot.send_message(message.chat.id, '❌ Используй: `/wheel [ставка]`', parse_mode='Markdown')
+        bot.send_message(message.chat.id, '❌ Используй: `/wheel [ставка]` или `/колесо [ставка]`', parse_mode='Markdown')
         return
     try:
         bet = int(args[1])
@@ -314,11 +308,11 @@ def wheel(message):
         update_balance(user_id, -bet)
         bot.send_message(message.chat.id, f'🎡 Колесо показало: {win_sector}\n❌ Проигрыш: -{bet}₽')
 
-@bot.message_handler(commands=['roulette'])
+@bot.message_handler(commands=['roulette', 'рулетка'])
 def roulette(message):
     args = message.text.split()
     if len(args) < 2:
-        bot.send_message(message.chat.id, '❌ Используй: `/roulette [ставка]`', parse_mode='Markdown')
+        bot.send_message(message.chat.id, '❌ Используй: `/roulette [ставка]` или `/рулетка [ставка]`', parse_mode='Markdown')
         return
     try:
         bet = int(args[1])
@@ -342,11 +336,11 @@ def roulette(message):
         bot.send_message(message.chat.id, f'🟢 Выпал *0* (ЗЕЛЁНЫЙ)!\n❌ Ты проиграл *{bet}₽*!', parse_mode='Markdown')
 
 # --- /pay ---
-@bot.message_handler(commands=['pay'])
+@bot.message_handler(commands=['pay', 'платёж'])
 def pay(message):
     args = message.text.split()
     if len(args) < 2:
-        bot.send_message(message.chat.id, '❌ Используй: `/pay [сумма]` (ответь на сообщение)', parse_mode='Markdown')
+        bot.send_message(message.chat.id, '❌ Используй: `/pay [сумма]` или `/платёж [сумма]` (ответь на сообщение)', parse_mode='Markdown')
         return
     try:
         amount = int(args[1])
@@ -373,14 +367,14 @@ def pay(message):
     bot.send_message(target_id, f'💰 Ты получил {amount}₽ от @{message.from_user.username or user_id}')
 
 # --- /duel ---
-@bot.message_handler(commands=['duel'])
+@bot.message_handler(commands=['duel', 'дуэль'])
 def duel(message):
     if not message.reply_to_message:
         bot.send_message(message.chat.id, '❌ Ответь на сообщение соперника!')
         return
     args = message.text.split()
     if len(args) < 2:
-        bot.send_message(message.chat.id, '❌ Используй: `/duel [сумма]`', parse_mode='Markdown')
+        bot.send_message(message.chat.id, '❌ Используй: `/duel [сумма]` или `/дуэль [сумма]`', parse_mode='Markdown')
         return
     try:
         amount = int(args[1])
@@ -432,24 +426,24 @@ def duel_callback(call):
     bot.answer_callback_query(call.id, 'Дуэль окончена!')
 
 # --- СЕМЬЯ ---
-@bot.message_handler(commands=['family'])
+@bot.message_handler(commands=['family', 'семья'])
 def family_menu(message):
     text = """
 🏠 *Управление семьёй*
 
-/family_create [название] — создать семью
-/family_join [название] — вступить в семью
-/family_leave — выйти из семьи
-/family_list — список всех семей
-/family_balance — баланс семьи
+/family_create [название] или /семья_создать [название] — создать семью
+/family_join [название] или /семья_вступить [название] — вступить в семью
+/family_leave или /семья_выйти — выйти из семьи
+/family_list или /семья_список — список всех семей
+/family_balance или /семья_баланс — баланс семьи
 """
     bot.send_message(message.chat.id, text, parse_mode='Markdown')
 
-@bot.message_handler(commands=['family_create'])
+@bot.message_handler(commands=['family_create', 'семья_создать'])
 def family_create(message):
     args = message.text.split(maxsplit=1)
     if len(args) < 2:
-        bot.send_message(message.chat.id, '❌ Используй: `/family_create [название]`', parse_mode='Markdown')
+        bot.send_message(message.chat.id, '❌ Используй: `/family_create [название]` или `/семья_создать [название]`', parse_mode='Markdown')
         return
     name = args[1]
     user_id = message.from_user.id
@@ -463,11 +457,11 @@ def family_create(message):
     conn.commit()
     bot.send_message(message.chat.id, f'✅ Семья "{name}" создана! Ты её глава.')
 
-@bot.message_handler(commands=['family_join'])
+@bot.message_handler(commands=['family_join', 'семья_вступить'])
 def family_join(message):
     args = message.text.split(maxsplit=1)
     if len(args) < 2:
-        bot.send_message(message.chat.id, '❌ Используй: `/family_join [название]`', parse_mode='Markdown')
+        bot.send_message(message.chat.id, '❌ Используй: `/family_join [название]` или `/семья_вступить [название]`', parse_mode='Markdown')
         return
     name = args[1]
     user_id = message.from_user.id
@@ -480,7 +474,7 @@ def family_join(message):
     conn.commit()
     bot.send_message(message.chat.id, f'✅ Ты вступил в семью "{name}"!')
 
-@bot.message_handler(commands=['family_leave'])
+@bot.message_handler(commands=['family_leave', 'семья_выйти'])
 def family_leave(message):
     user_id = message.from_user.id
     user = get_user(user_id)
@@ -499,7 +493,7 @@ def family_leave(message):
         bot.send_message(message.chat.id, f'👋 Ты покинул семью "{family_name}".')
     conn.commit()
 
-@bot.message_handler(commands=['family_list'])
+@bot.message_handler(commands=['family_list', 'семья_список'])
 def family_list(message):
     cursor.execute('SELECT name FROM families')
     families = cursor.fetchall()
@@ -513,7 +507,7 @@ def family_list(message):
         text += f'🏠 *{f[0]}* — {count} участников\n'
     bot.send_message(message.chat.id, text, parse_mode='Markdown')
 
-@bot.message_handler(commands=['family_balance'])
+@bot.message_handler(commands=['family_balance', 'семья_баланс'])
 def family_balance(message):
     user = get_user(message.from_user.id)
     if not user or not user[4]:
@@ -527,11 +521,11 @@ def family_balance(message):
         total += get_balance(m[0])
     bot.send_message(message.chat.id, f'💰 *Общий баланс семьи "{family_name}": {total}₽*', parse_mode='Markdown')
 
-# --- ЗАПУСК С АВТОПЕРЕЗАПУСКОМ ---
+# --- ЗАПУСК БОТА ---
 if __name__ == '__main__':
     while True:
         try:
-            print('✅ БОТ ЗАПУЩЕН в Pydroid!')
+            print('✅ БОТ ЗАПУЩЕН НА RENDER!')
             print('📋 Бот работает в чатах!')
             bot.polling(none_stop=True, timeout=60)
         except Exception as e:
