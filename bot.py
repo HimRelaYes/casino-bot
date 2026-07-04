@@ -28,8 +28,8 @@ def run_flask():
 threading.Thread(target=run_flask, daemon=True).start()
 
 # --- НАСТРОЙКИ GITHUB БЭКАПА ---
-GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN')  # Теперь из переменных окружения!
-REPO_NAME = 'HimRelaYes/casino-bot'  # Замени на свой!
+GITHUB_TOKEN = os.environ.get('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')
+REPO_NAME = 'himzyReal/casino-bot'
 FILE_PATH = 'casino.db'
 DB_PATH = 'casino.db'
 
@@ -78,7 +78,6 @@ restore_from_github()
 conn = sqlite3.connect(DB_PATH, check_same_thread=False)
 cursor = conn.cursor()
 
-# --- ДОБАВЛЯЕМ КОЛОНКИ ДЛЯ УРОВНЕЙ ---
 cursor.execute('''
 CREATE TABLE IF NOT EXISTS users (
     user_id INTEGER PRIMARY KEY,
@@ -120,39 +119,16 @@ threading.Thread(target=auto_backup, daemon=True).start()
 
 # --- СИСТЕМА УРОВНЕЙ ---
 LEVELS = {
-    1: 0,
-    2: 100,
-    3: 250,
-    4: 500,
-    5: 1000,
-    6: 2000,
-    7: 3500,
-    8: 5500,
-    9: 8000,
-    10: 12000,
-    11: 17000,
-    12: 23000,
-    13: 30000,
-    14: 40000,
-    15: 50000,
-    16: 65000,
-    17: 80000,
-    18: 100000,
-    19: 125000,
-    20: 150000,
+    1: 0, 2: 100, 3: 250, 4: 500, 5: 1000,
+    6: 2000, 7: 3500, 8: 5500, 9: 8000, 10: 12000,
+    11: 17000, 12: 23000, 13: 30000, 14: 40000, 15: 50000,
+    16: 65000, 17: 80000, 18: 100000, 19: 125000, 20: 150000,
 }
 
 LEVEL_NAMES = {
-    1: '🟤 Новичок',
-    2: '⚪ Странник',
-    3: '🟢 Игрок',
-    4: '🔵 Опытный',
-    5: '🟣 Профи',
-    6: '🟡 Мастер',
-    7: '🟠 Ветеран',
-    8: '🔴 Легенда',
-    9: '💎 Элита',
-    10: '👑 Император',
+    1: '🟤 Новичок', 2: '⚪ Странник', 3: '🟢 Игрок', 4: '🔵 Опытный',
+    5: '🟣 Профи', 6: '🟡 Мастер', 7: '🟠 Ветеран', 8: '🔴 Легенда',
+    9: '💎 Элита', 10: '👑 Император',
 }
 
 def get_level(xp):
@@ -173,11 +149,9 @@ def add_xp(user_id, amount):
     xp, current_level = res
     new_xp = xp + amount
     new_level = get_level(new_xp)
-    
     cursor.execute('UPDATE users SET xp = ?, level = ? WHERE user_id = ?', (new_xp, new_level, user_id))
     conn.commit()
     backup_to_github()
-    
     if new_level > current_level:
         return new_level
     return None
@@ -196,20 +170,81 @@ def get_level_info(user_id):
         'progress': round((xp - LEVELS[level]) / (next_xp - LEVELS[level]) * 100) if next_xp else 100
     }
 
-# --- ФУНКЦИИ ДЛЯ НАГРАДЫ ЗА УРОВНИ ---
 def level_reward(level):
-    rewards = {
-        2: 100,
-        3: 200,
-        4: 300,
-        5: 500,
-        6: 700,
-        7: 1000,
-        8: 1500,
-        9: 2000,
-        10: 3000,
-    }
+    rewards = {2: 100, 3: 200, 4: 300, 5: 500, 6: 700, 7: 1000, 8: 1500, 9: 2000, 10: 3000}
     return rewards.get(level, level * 100)
+
+# --- АДМИН-КОМАНДЫ ---
+ADMIN_IDS = [1879227483]  # ВСТАВЬ СВОИ ID (можно несколько)
+
+@bot.message_handler(commands=['админ_баланс'])
+def admin_balance(message):
+    if message.from_user.id not in ADMIN_IDS:
+        bot.reply_to(message, '❌ У тебя нет прав!')
+        return
+    args = message.text.split()
+    if len(args) < 3:
+        bot.reply_to(message, '❌ Используй: `/админ_баланс [ID] [сумма]`')
+        return
+    try:
+        user_id = int(args[1])
+        amount = int(args[2])
+        update_balance(user_id, amount)
+        bot.reply_to(message, f'✅ Баланс пользователя {user_id} изменён на {amount}₽')
+    except:
+        bot.reply_to(message, '❌ Неверный формат!')
+
+@bot.message_handler(commands=['админ_бонус'])
+def admin_bonus(message):
+    if message.from_user.id not in ADMIN_IDS:
+        bot.reply_to(message, '❌ У тебя нет прав!')
+        return
+    args = message.text.split()
+    if len(args) < 2:
+        bot.reply_to(message, '❌ Используй: `/админ_бонус [ID]`')
+        return
+    try:
+        user_id = int(args[1])
+        amount = random.randint(500, 2000)
+        update_balance(user_id, amount)
+        bot.reply_to(message, f'✅ Бонус {amount}₽ выдан пользователю {user_id}')
+    except:
+        bot.reply_to(message, '❌ Неверный ID!')
+
+@bot.message_handler(commands=['админ_штраф'])
+def admin_penalty(message):
+    if message.from_user.id not in ADMIN_IDS:
+        bot.reply_to(message, '❌ У тебя нет прав!')
+        return
+    args = message.text.split()
+    if len(args) < 2:
+        bot.reply_to(message, '❌ Используй: `/админ_штраф [ID] [дни]`')
+        return
+    try:
+        user_id = int(args[1])
+        days = int(args[2]) if len(args) > 2 else 2
+        add_penalty(user_id, days)
+        bot.reply_to(message, f'✅ Штраф на {days} дней выдан пользователю {user_id}')
+    except:
+        bot.reply_to(message, '❌ Неверный формат!')
+
+@bot.message_handler(commands=['админ_очистить'])
+def admin_clear(message):
+    if message.from_user.id not in ADMIN_IDS:
+        bot.reply_to(message, '❌ У тебя нет прав!')
+        return
+    args = message.text.split()
+    if len(args) < 2:
+        bot.reply_to(message, '❌ Используй: `/админ_очистить [ID]`')
+        return
+    try:
+        user_id = int(args[1])
+        cursor.execute('DELETE FROM users WHERE user_id = ?', (user_id,))
+        conn.commit()
+        backup_to_github()
+        bot.reply_to(message, f'✅ Пользователь {user_id} удалён из базы!')
+    except:
+        bot.reply_to(message, '❌ Неверный ID!')
 
 # --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
 def get_user(user_id):
@@ -229,9 +264,8 @@ def get_balance(user_id):
 def update_balance(user_id, amount):
     cursor.execute('UPDATE users SET balance = balance + ? WHERE user_id = ?', (amount, user_id))
     conn.commit()
-    # Добавляем опыт за заработанные деньги (кроме проигрышей)
     if amount > 0:
-        xp_gain = amount // 10  # 1 XP за каждые 10 монет
+        xp_gain = amount // 10
         new_level = add_xp(user_id, xp_gain)
         if new_level:
             bonus = level_reward(new_level)
@@ -284,7 +318,7 @@ def set_bonus(user_id):
 def start(message):
     user_id = message.from_user.id
     register_user(user_id, message.from_user.first_name)
-    bot.send_message(message.chat.id, 
+    bot.reply_to(message, 
         "🎰 *Добро пожаловать в FoldBot!*\n\n"
         "👋 Я бот-казино с семьями, работой и дуэлями!\n"
         "📋 Введи /help или /помощь чтобы увидеть все команды.\n\n"
@@ -316,11 +350,11 @@ def help_command(message):
 ├ /seller или /продавец — 🛒 Продавец (200-400₽, КД 2 часа)
 └ /welder или /сварщик — 👨‍🏭 Сварщик (300-500₽, КД 4 часа)
 
-🎰 *КАЗИНО*
-├ /slots [ставка] или /слоты [ставка] — 🎰 Слоты
-├ /dice [ставка] или /кубики [ставка] — 🎲 Кубики
-├ /wheel [ставка] или /колесо [ставка] — 🎡 Колесо фортуны
-└ /roulette [ставка] или /рулетка [ставка] — 🔴 Рулетка
+🎰 *КАЗИНО* (шанс на победу)
+├ /slots [ставка] или /слоты [ставка] — 🎰 Слоты (шанс 40%)
+├ /dice [ставка] или /кубики [ставка] — 🎲 Кубики (шанс 50%)
+├ /wheel [ставка] или /колесо [ставка] — 🎡 Колесо (шанс 60%)
+└ /roulette [ставка] или /рулетка [ставка] — 🔴 Рулетка (шанс 48%)
 
 🏠 *СЕМЬЯ*
 ├ /семьясоздать [название] — создать семью
@@ -342,7 +376,7 @@ def help_command(message):
 ━━━━━━━━━━━━━━━━━━━━
 💡 *Совет:* Работай, копи деньги и становись миллионером! 🚀
 """
-    bot.send_message(message.chat.id, help_text, parse_mode='Markdown')
+    bot.reply_to(message, help_text, parse_mode='Markdown')
 
 @bot.message_handler(commands=['profile', 'профиль'])
 def profile(message):
@@ -352,18 +386,17 @@ def profile(message):
         try:
             target_id = int(args[1])
         except:
-            bot.send_message(message.chat.id, '❌ Используй: `/profile [ID]` или `/профиль [ID]`', parse_mode='Markdown')
+            bot.reply_to(message, '❌ Используй: `/profile [ID]` или `/профиль [ID]`', parse_mode='Markdown')
             return
     else:
         target_id = user_id
     user = get_user(target_id)
     if not user:
-        bot.send_message(message.chat.id, '❌ Пользователь не найден!')
+        bot.reply_to(message, '❌ Пользователь не найден!')
         return
     balance = user[2]
     family = user[4] if user[4] else 'Нет'
     penalty = '⚠️ Да' if is_penalized(target_id) else '✅ Нет'
-    subscribed = '✅ Да' if user[11] == 1 else '❌ Нет'
     level_info = get_level_info(target_id)
     level_name = get_level_name(level_info['level'])
     
@@ -376,7 +409,6 @@ def profile(message):
 📊 *Опыт:* {level_info['xp']}
 🏠 *Семья:* {family}
 ⚠️ *Штраф:* {penalty}
-📢 *Подписка:* {subscribed}
 ━━━━━━━━━━━━━━━━━━━━
 """
     if level_info['next_xp']:
@@ -384,14 +416,14 @@ def profile(message):
         text += f"\n📊 *Прогресс:* [{bar}] {level_info['progress']}%"
         text += f"\n🎯 До следующего уровня: {level_info['next_xp'] - level_info['xp']} XP"
     
-    bot.send_message(message.chat.id, text, parse_mode='Markdown')
+    bot.reply_to(message, text, parse_mode='Markdown')
 
 @bot.message_handler(commands=['level', 'уровень'])
 def level_command(message):
     user_id = message.from_user.id
     level_info = get_level_info(user_id)
     if not level_info:
-        bot.send_message(message.chat.id, '❌ Ты не зарегистрирован! Напиши /start')
+        bot.reply_to(message, '❌ Ты не зарегистрирован! Напиши /start')
         return
     level_name = get_level_name(level_info['level'])
     text = f"""
@@ -408,28 +440,24 @@ def level_command(message):
     else:
         text += "\n👑 *МАКСИМАЛЬНЫЙ УРОВЕНЬ!*"
     
-    bot.send_message(message.chat.id, text, parse_mode='Markdown')
+    bot.reply_to(message, text, parse_mode='Markdown')
 
 @bot.message_handler(commands=['balance', 'баланс'])
 def balance(message):
     bal = get_balance(message.from_user.id)
-    bot.send_message(message.chat.id, f'💰 Твой баланс: *{bal}₽*', parse_mode='Markdown')
+    bot.reply_to(message, f'💰 Твой баланс: *{bal}₽*', parse_mode='Markdown')
 
 @bot.message_handler(commands=['top', 'топ'])
 def top_players(message):
-    # Топ по деньгам
     cursor.execute('SELECT user_id, name, balance, level FROM users ORDER BY balance DESC LIMIT 10')
     tops = cursor.fetchall()
     if not tops:
-        bot.send_message(message.chat.id, '📭 Пока нет игроков!')
+        bot.reply_to(message, '📭 Пока нет игроков!')
         return
-    
     text = "🏆 *ТОП 10 ПО ДЕНЬГАМ*\n━━━━━━━━━━━━━━━━━━━━\n"
     for i, (user_id, name, balance, level) in enumerate(tops, 1):
         medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
         text += f"{medal} *{name}* — {balance}₽ (Ур. {level})\n"
-    
-    # Топ по уровню
     cursor.execute('SELECT user_id, name, level, xp FROM users ORDER BY level DESC, xp DESC LIMIT 5')
     tops_level = cursor.fetchall()
     if tops_level:
@@ -437,14 +465,13 @@ def top_players(message):
         for i, (user_id, name, level, xp) in enumerate(tops_level, 1):
             medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
             text += f"{medal} *{name}* — Ур. {level} ({xp} XP)\n"
-    
-    bot.send_message(message.chat.id, text, parse_mode='Markdown')
+    bot.reply_to(message, text, parse_mode='Markdown')
 
 def work_command(message, job_name, min_pay, max_pay, cooldown_hours):
     user_id = message.from_user.id
     if is_penalized(user_id):
         bonus = random.randint(5, 15)
-        bot.send_message(message.chat.id, f'⚠️ Ты под штрафом! Зарплата уменьшена на {bonus}%')
+        bot.reply_to(message, f'⚠️ Ты под штрафом! Зарплата уменьшена на {bonus}%')
         min_pay = int(min_pay * (1 - bonus/100))
         max_pay = int(max_pay * (1 - bonus/100))
     if not can_work(user_id, cooldown_hours):
@@ -453,12 +480,12 @@ def work_command(message, job_name, min_pay, max_pay, cooldown_hours):
         if res and res[0]:
             last = datetime.strptime(res[0], '%Y-%m-%d %H:%M:%S')
             remaining = int((timedelta(hours=cooldown_hours) - (datetime.now() - last)).seconds // 60)
-            bot.send_message(message.chat.id, f'⏳ Отдыхай! Следующая работа через {remaining} мин.')
+            bot.reply_to(message, f'⏳ Отдыхай! Следующая работа через {remaining} мин.')
         return
     salary = random.randint(min_pay, max_pay)
     update_balance(user_id, salary)
     set_last_work(user_id)
-    bot.send_message(message.chat.id, f'💼 *{job_name}*\n✅ Ты заработал *{salary}₽*!\n⏳ Следующая работа через {cooldown_hours} ч.', parse_mode='Markdown')
+    bot.reply_to(message, f'💼 *{job_name}*\n✅ Ты заработал *{salary}₽*!\n⏳ Следующая работа через {cooldown_hours} ч.', parse_mode='Markdown')
 
 @bot.message_handler(commands=['developer', 'разработчик'])
 def developer(message):
@@ -485,12 +512,12 @@ def bonus(message):
         if res and res[0]:
             last = datetime.strptime(res[0], '%Y-%m-%d %H:%M:%S')
             remaining = int((timedelta(days=1) - (datetime.now() - last)).seconds // 3600)
-            bot.send_message(message.chat.id, f'⏳ Бонус уже получен! Следующий через {remaining} ч.')
+            bot.reply_to(message, f'⏳ Бонус уже получен! Следующий через {remaining} ч.')
         return
     amount = random.randint(100, 500)
     update_balance(user_id, amount)
     set_bonus(user_id)
-    bot.send_message(message.chat.id, f'🎁 Ты получил ежедневный бонус: *{amount}₽*', parse_mode='Markdown')
+    bot.reply_to(message, f'🎁 Ты получил ежедневный бонус: *{amount}₽*', parse_mode='Markdown')
 
 @bot.message_handler(commands=['подписка'])
 def check_subscription(message):
@@ -502,14 +529,14 @@ def check_subscription(message):
             cursor.execute('SELECT subscribed FROM users WHERE user_id = ?', (user_id,))
             res = cursor.fetchone()
             if res and res[0] == 1:
-                bot.send_message(message.chat.id, '❌ Ты уже получил награду за подписку!')
+                bot.reply_to(message, '❌ Ты уже получил награду за подписку!')
             else:
                 update_balance(user_id, 1000)
                 cursor.execute('UPDATE users SET subscribed = 1 WHERE user_id = ?', (user_id,))
                 cursor.execute('UPDATE users SET sub_check_time = ? WHERE user_id = ?', (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), user_id))
                 conn.commit()
                 backup_to_github()
-                bot.send_message(message.chat.id, '✅ Ты подписан на канал!\n🎁 Получил 1000₽ в подарок!')
+                bot.reply_to(message, '✅ Ты подписан на канал!\n🎁 Получил 1000₽ в подарок!')
         else:
             cursor.execute('SELECT subscribed FROM users WHERE user_id = ?', (user_id,))
             res = cursor.fetchone()
@@ -518,136 +545,323 @@ def check_subscription(message):
                 cursor.execute('UPDATE users SET subscribed = 0 WHERE user_id = ?', (user_id,))
                 conn.commit()
                 backup_to_github()
-                bot.send_message(message.chat.id, '❌ Ты отписался от канала!\n💰 Штраф: -3000₽')
+                bot.reply_to(message, '❌ Ты отписался от канала!\n💰 Штраф: -3000₽')
             else:
-                bot.send_message(message.chat.id, '❌ Ты не подписан на канал!\n📢 Подпишись: https://t.me/rengadeup')
+                bot.reply_to(message, '❌ Ты не подписан на канал!\n📢 Подпишись: https://t.me/rengadeup')
     except Exception as e:
-        bot.send_message(message.chat.id, f'❌ Ошибка проверки подписки. Убедись, что канал существует.\n📢 Ссылка: https://t.me/rengadeup')
+        bot.reply_to(message, f'❌ Ошибка проверки подписки. Убедись, что канал существует.\n📢 Ссылка: https://t.me/rengadeup')
 
 # --- КАЗИНО ---
 @bot.message_handler(commands=['slots', 'слоты'])
 def slots(message):
     args = message.text.split()
     if len(args) < 2:
-        bot.send_message(message.chat.id, '❌ Используй: `/slots [ставка]` или `/слоты [ставка]`', parse_mode='Markdown')
+        bot.reply_to(message, '❌ Используй: `/slots [ставка]` или `/слоты [ставка]`', parse_mode='Markdown')
         return
     try:
         bet = int(args[1])
     except:
-        bot.send_message(message.chat.id, '❌ Ставка должна быть числом!')
+        bot.reply_to(message, '❌ Ставка должна быть числом!')
         return
     if bet <= 0:
-        bot.send_message(message.chat.id, '❌ Ставка должна быть больше 0!')
+        bot.reply_to(message, '❌ Ставка должна быть больше 0!')
         return
     user_id = message.from_user.id
     if get_balance(user_id) < bet:
-        bot.send_message(message.chat.id, '❌ Недостаточно средств!')
+        bot.reply_to(message, '❌ Недостаточно средств!')
         return
     emojis = ['🍒', '🍋', '🍊', '🍇', '💎', '7️⃣']
     s1, s2, s3 = random.choice(emojis), random.choice(emojis), random.choice(emojis)
     result = f'{s1} | {s2} | {s3}'
-    if s1 == s2 == s3:
-        win = bet * 5
-        update_balance(user_id, win)
-        bot.send_message(message.chat.id, f'🎰 {result}\n🎉 ДЖЕКПОТ! +{win}₽')
-    elif s1 == s2 or s2 == s3 or s1 == s3:
-        win = bet * 2
-        update_balance(user_id, win)
-        bot.send_message(message.chat.id, f'🎰 {result}\n✅ Выигрыш! +{win}₽')
+    if random.random() < 0.4:  # 40% шанс выигрыша
+        if s1 == s2 == s3:
+            win = bet * 5
+            update_balance(user_id, win)
+            bot.reply_to(message, f'🎰 {result}\n🎉 ДЖЕКПОТ! +{win}₽ (шанс 40%)')
+        elif s1 == s2 or s2 == s3 or s1 == s3:
+            win = bet * 2
+            update_balance(user_id, win)
+            bot.reply_to(message, f'🎰 {result}\n✅ Выигрыш! +{win}₽ (шанс 40%)')
+        else:
+            update_balance(user_id, -bet)
+            bot.reply_to(message, f'🎰 {result}\n❌ Проигрыш -{bet}₽ (шанс 40%)')
     else:
         update_balance(user_id, -bet)
-        bot.send_message(message.chat.id, f'🎰 {result}\n❌ Проигрыш -{bet}₽')
+        bot.reply_to(message, f'🎰 {result}\n❌ Проигрыш -{bet}₽ (шанс 40%)')
 
 @bot.message_handler(commands=['dice', 'кубики'])
 def dice(message):
     args = message.text.split()
     if len(args) < 2:
-        bot.send_message(message.chat.id, '❌ Используй: `/dice [ставка]` или `/кубики [ставка]`', parse_mode='Markdown')
+        bot.reply_to(message, '❌ Используй: `/dice [ставка]` или `/кубики [ставка]`', parse_mode='Markdown')
         return
     try:
         bet = int(args[1])
     except:
-        bot.send_message(message.chat.id, '❌ Ставка должна быть числом!')
+        bot.reply_to(message, '❌ Ставка должна быть числом!')
         return
     if bet <= 0:
-        bot.send_message(message.chat.id, '❌ Ставка должна быть больше 0!')
+        bot.reply_to(message, '❌ Ставка должна быть больше 0!')
         return
     user_id = message.from_user.id
     if get_balance(user_id) < bet:
-        bot.send_message(message.chat.id, '❌ Недостаточно средств!')
+        bot.reply_to(message, '❌ Недостаточно средств!')
         return
     user_roll = random.randint(1, 6)
     bot_roll = random.randint(1, 6)
     if user_roll > bot_roll:
         update_balance(user_id, bet)
-        bot.send_message(message.chat.id, f'🎲 Ты: {user_roll} | Бот: {bot_roll}\n✅ Ты выиграл {bet}₽!')
+        bot.reply_to(message, f'🎲 Ты: {user_roll} | Бот: {bot_roll}\n✅ Ты выиграл {bet}₽! (шанс 50%)')
     elif user_roll < bot_roll:
         update_balance(user_id, -bet)
-        bot.send_message(message.chat.id, f'🎲 Ты: {user_roll} | Бот: {bot_roll}\n❌ Ты проиграл {bet}₽!')
+        bot.reply_to(message, f'🎲 Ты: {user_roll} | Бот: {bot_roll}\n❌ Ты проиграл {bet}₽! (шанс 50%)')
     else:
-        bot.send_message(message.chat.id, f'🎲 Ты: {user_roll} | Бот: {bot_roll}\n🤝 Ничья!')
+        bot.reply_to(message, f'🎲 Ты: {user_roll} | Бот: {bot_roll}\n🤝 Ничья! (шанс 50%)')
 
 @bot.message_handler(commands=['wheel', 'колесо'])
 def wheel(message):
     args = message.text.split()
     if len(args) < 2:
-        bot.send_message(message.chat.id, '❌ Используй: `/wheel [ставка]` или `/колесо [ставка]`', parse_mode='Markdown')
+        bot.reply_to(message, '❌ Используй: `/wheel [ставка]` или `/колесо [ставка]`', parse_mode='Markdown')
         return
     try:
         bet = int(args[1])
     except:
-        bot.send_message(message.chat.id, '❌ Ставка должна быть числом!')
+        bot.reply_to(message, '❌ Ставка должна быть числом!')
         return
     if bet <= 0:
-        bot.send_message(message.chat.id, '❌ Ставка должна быть больше 0!')
+        bot.reply_to(message, '❌ Ставка должна быть больше 0!')
         return
     user_id = message.from_user.id
     if get_balance(user_id) < bet:
-        bot.send_message(message.chat.id, '❌ Недостаточно средств!')
+        bot.reply_to(message, '❌ Недостаточно средств!')
         return
     sectors = ['🍒 x2', '🍋 x3', '🍊 x1', '💎 x5', '❌ 0']
     win_sector = random.choice(sectors)
-    if 'x' in win_sector:
+    if 'x' in win_sector and random.random() < 0.6:  # 60% шанс выигрыша
         multiplier = int(win_sector.split('x')[1])
         win = bet * multiplier
         update_balance(user_id, win)
-        bot.send_message(message.chat.id, f'🎡 Колесо показало: {win_sector}\n✅ Выигрыш: +{win}₽')
+        bot.reply_to(message, f'🎡 Колесо показало: {win_sector}\n✅ Выигрыш: +{win}₽ (шанс 60%)')
     else:
         update_balance(user_id, -bet)
-        bot.send_message(message.chat.id, f'🎡 Колесо показало: {win_sector}\n❌ Проигрыш: -{bet}₽')
+        bot.reply_to(message, f'🎡 Колесо показало: {win_sector}\n❌ Проигрыш: -{bet}₽ (шанс 60%)')
 
 @bot.message_handler(commands=['roulette', 'рулетка'])
 def roulette(message):
     args = message.text.split()
     if len(args) < 2:
-        bot.send_message(message.chat.id, '❌ Используй: `/roulette [ставка]` или `/рулетка [ставка]`', parse_mode='Markdown')
+        bot.reply_to(message, '❌ Используй: `/roulette [ставка]` или `/рулетка [ставка]`', parse_mode='Markdown')
         return
     try:
         bet = int(args[1])
     except:
-        bot.send_message(message.chat.id, '❌ Ставка должна быть числом!')
+        bot.reply_to(message, '❌ Ставка должна быть числом!')
         return
     if bet <= 0:
-        bot.send_message(message.chat.id, '❌ Ставка должна быть больше 0!')
+        bot.reply_to(message, '❌ Ставка должна быть больше 0!')
         return
     user_id = message.from_user.id
     if get_balance(user_id) < bet:
-        bot.send_message(message.chat.id, '❌ Недостаточно средств!')
+        bot.reply_to(message, '❌ Недостаточно средств!')
         return
     number = random.randint(0, 36)
     if number != 0 and number % 2 == 0:
-        win = bet * 2
-        update_balance(user_id, win)
-        bot.send_message(message.chat.id, f'🔴 Выпало *{number}* (КРАСНОЕ)!\n✅ Ты выиграл *{win}₽*!', parse_mode='Markdown')
+        if random.random() < 0.48:  # 48% шанс выигрыша
+            win = bet * 2
+            update_balance(user_id, win)
+            bot.reply_to(message, f'🔴 Выпало *{number}* (КРАСНОЕ)!\n✅ Ты выиграл *{win}₽*! (шанс 48%)', parse_mode='Markdown')
+        else:
+            update_balance(user_id, -bet)
+            bot.reply_to(message, f'🔴 Выпало *{number}* (КРАСНОЕ)!\n❌ Ты проиграл *{bet}₽*! (шанс 48%)', parse_mode='Markdown')
     elif number != 0 and number % 2 != 0:
-        update_balance(user_id, -bet)
-        bot.send_message(message.chat.id, f'⚫ Выпало *{number}* (ЧЁРНОЕ)!\n❌ Ты проиграл *{bet}₽*!', parse_mode='Markdown')
+        if random.random() < 0.48:
+            win = bet * 2
+            update_balance(user_id, win)
+            bot.reply_to(message, f'⚫ Выпало *{number}* (ЧЁРНОЕ)!\n✅ Ты выиграл *{win}₽*! (шанс 48%)', parse_mode='Markdown')
+        else:
+            update_balance(user_id, -bet)
+            bot.reply_to(message, f'⚫ Выпало *{number}* (ЧЁРНОЕ)!\n❌ Ты проиграл *{bet}₽*! (шанс 48%)', parse_mode='Markdown')
     else:
         update_balance(user_id, -bet)
-        bot.send_message(message.chat.id, f'🟢 Выпал *0* (ЗЕЛЁНЫЙ)!\n❌ Ты проиграл *{bet}₽*!', parse_mode='Markdown')
+        bot.reply_to(message, f'🟢 Выпал *0* (ЗЕЛЁНЫЙ)!\n❌ Ты проиграл *{bet}₽*! (шанс 48%)', parse_mode='Markdown')
 
-# --- ОСТАЛЬНЫЕ КОМАНДЫ (pay, duel, семья) ---
-# [ВСТАВЬ ИХ СЮДА ИЗ ПРЕДЫДУЩЕГО КОДА - ОНИ НЕ ИЗМЕНИЛИСЬ]
+# --- /pay ---
+@bot.message_handler(commands=['pay', 'платёж'])
+def pay(message):
+    args = message.text.split()
+    if len(args) < 2:
+        bot.reply_to(message, '❌ Используй: `/pay [сумма]` или `/платёж [сумма]` (ответь на сообщение)', parse_mode='Markdown')
+        return
+    try:
+        amount = int(args[1])
+    except:
+        bot.reply_to(message, '❌ Сумма должна быть числом!')
+        return
+    if amount <= 0:
+        bot.reply_to(message, '❌ Сумма должна быть больше 0!')
+        return
+    user_id = message.from_user.id
+    if get_balance(user_id) < amount:
+        bot.reply_to(message, '❌ Недостаточно средств!')
+        return
+    if not message.reply_to_message:
+        bot.reply_to(message, '❌ Ответь на сообщение пользователя!')
+        return
+    target_id = message.reply_to_message.from_user.id
+    if target_id == user_id:
+        bot.reply_to(message, '❌ Нельзя перевести самому себе!')
+        return
+    update_balance(user_id, -amount)
+    update_balance(target_id, amount)
+    bot.reply_to(message, f'✅ Переведено {amount}₽ пользователю @{message.reply_to_message.from_user.username or target_id}')
+    bot.send_message(target_id, f'💰 Ты получил {amount}₽ от @{message.from_user.username or user_id}')
+
+# --- /duel ---
+@bot.message_handler(commands=['duel', 'дуэль'])
+def duel(message):
+    if not message.reply_to_message:
+        bot.reply_to(message, '❌ Ответь на сообщение соперника!')
+        return
+    args = message.text.split()
+    if len(args) < 2:
+        bot.reply_to(message, '❌ Используй: `/duel [сумма]` или `/дуэль [сумма]`', parse_mode='Markdown')
+        return
+    try:
+        amount = int(args[1])
+    except:
+        bot.reply_to(message, '❌ Ставка должна быть числом!')
+        return
+    if amount <= 0:
+        bot.reply_to(message, '❌ Ставка должна быть больше 0!')
+        return
+    user_id = message.from_user.id
+    target_id = message.reply_to_message.from_user.id
+    if user_id == target_id:
+        bot.reply_to(message, '❌ Нельзя вызвать себя!')
+        return
+    if get_balance(user_id) < amount:
+        bot.reply_to(message, '❌ Недостаточно средств!')
+        return
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton('✅ Принять', callback_data=f'duel_accept_{user_id}_{target_id}_{amount}'))
+    markup.add(types.InlineKeyboardButton('❌ Отклонить', callback_data=f'duel_reject_{user_id}_{target_id}'))
+    bot.send_message(target_id, f'⚔️ @{message.from_user.username or user_id} вызывает тебя на дуэль!\n💰 Ставка: {amount}₽', reply_markup=markup)
+    bot.reply_to(message, '⚔️ Запрос на дуэль отправлен! Жди ответа.')
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('duel_'))
+def duel_callback(call):
+    data = call.data.split('_')
+    action = data[1]
+    if action == 'reject':
+        bot.answer_callback_query(call.id, 'Дуэль отклонена!')
+        bot.edit_message_text('❌ Дуэль отклонена.', call.message.chat.id, call.message.message_id)
+        return
+    user_id = int(data[2])
+    target_id = int(data[3])
+    amount = int(data[4])
+    if call.from_user.id != target_id:
+        bot.answer_callback_query(call.id, 'Это не твоя дуэль!', show_alert=True)
+        return
+    if get_balance(user_id) < amount or get_balance(target_id) < amount:
+        bot.answer_callback_query(call.id, 'У одного из игроков недостаточно средств!', show_alert=True)
+        return
+    winner = random.choice([user_id, target_id])
+    loser = target_id if winner == user_id else user_id
+    update_balance(winner, amount)
+    update_balance(loser, -amount)
+    if get_balance(loser) < -50000:
+        update_balance(loser, -get_balance(loser))
+        add_penalty(loser, 2)
+        bot.send_message(loser, '💀 Твой счёт обнулён! Ты под штрафом 2 дня!')
+    bot.edit_message_text(f'⚔️ *Дуэль завершена!*\n🥇 Победитель: @{call.from_user.username or winner}\n💰 Выигрыш: {amount}₽', call.message.chat.id, call.message.message_id, parse_mode='Markdown')
+    bot.answer_callback_query(call.id, 'Дуэль окончена!')
+
+# --- СЕМЬЯ ---
+@bot.message_handler(commands=['семьясоздать'])
+def family_create(message):
+    args = message.text.split(maxsplit=1)
+    if len(args) < 2:
+        bot.reply_to(message, '❌ Используй: `/семьясоздать [название]`', parse_mode='Markdown')
+        return
+    name = args[1]
+    user_id = message.from_user.id
+    cursor.execute('SELECT * FROM families WHERE name = ?', (name,))
+    if cursor.fetchone():
+        bot.reply_to(message, '❌ Семья с таким названием уже существует!')
+        return
+    cursor.execute('INSERT INTO families (name, owner_id) VALUES (?, ?)', (name, user_id))
+    cursor.execute('INSERT INTO family_members (user_id, family_name) VALUES (?, ?)', (user_id, name))
+    cursor.execute('UPDATE users SET family = ? WHERE user_id = ?', (name, user_id))
+    conn.commit()
+    backup_to_github()
+    bot.reply_to(message, f'✅ Семья "{name}" создана! Ты её глава.')
+
+@bot.message_handler(commands=['семьявступить'])
+def family_join(message):
+    args = message.text.split(maxsplit=1)
+    if len(args) < 2:
+        bot.reply_to(message, '❌ Используй: `/семьявступить [название]`', parse_mode='Markdown')
+        return
+    name = args[1]
+    user_id = message.from_user.id
+    cursor.execute('SELECT * FROM families WHERE name = ?', (name,))
+    if not cursor.fetchone():
+        bot.reply_to(message, '❌ Семья не найдена!')
+        return
+    cursor.execute('INSERT INTO family_members (user_id, family_name) VALUES (?, ?)', (user_id, name))
+    cursor.execute('UPDATE users SET family = ? WHERE user_id = ?', (name, user_id))
+    conn.commit()
+    backup_to_github()
+    bot.reply_to(message, f'✅ Ты вступил в семью "{name}"!')
+
+@bot.message_handler(commands=['семьявыйти'])
+def family_leave(message):
+    user_id = message.from_user.id
+    user = get_user(user_id)
+    if not user or not user[4]:
+        bot.reply_to(message, '❌ Ты не состоишь в семье!')
+        return
+    family_name = user[4]
+    cursor.execute('DELETE FROM family_members WHERE user_id = ?', (user_id,))
+    cursor.execute('UPDATE users SET family = NULL WHERE user_id = ?', (user_id,))
+    cursor.execute('SELECT COUNT(*) FROM family_members WHERE family_name = ?', (family_name,))
+    count = cursor.fetchone()[0]
+    if count == 0:
+        cursor.execute('DELETE FROM families WHERE name = ?', (family_name,))
+        bot.reply_to(message, f'🏚️ Ты покинул семью "{family_name}". Семья распущена.')
+    else:
+        bot.reply_to(message, f'👋 Ты покинул семью "{family_name}".')
+    conn.commit()
+    backup_to_github()
+
+@bot.message_handler(commands=['семьясписок'])
+def family_list(message):
+    cursor.execute('SELECT name FROM families')
+    families = cursor.fetchall()
+    if not families:
+        bot.reply_to(message, '📭 Пока нет созданных семей.')
+        return
+    text = '📋 *Список семей:*\n\n'
+    for f in families:
+        cursor.execute('SELECT COUNT(*) FROM family_members WHERE family_name = ?', (f[0],))
+        count = cursor.fetchone()[0]
+        text += f'🏠 *{f[0]}* — {count} участников\n'
+    bot.reply_to(message, text, parse_mode='Markdown')
+
+@bot.message_handler(commands=['семьябаланс'])
+def family_balance(message):
+    user = get_user(message.from_user.id)
+    if not user or not user[4]:
+        bot.reply_to(message, '❌ Ты не в семье!')
+        return
+    family_name = user[4]
+    cursor.execute('SELECT user_id FROM family_members WHERE family_name = ?', (family_name,))
+    members = cursor.fetchall()
+    total = 0
+    for m in members:
+        total += get_balance(m[0])
+    bot.reply_to(message, f'💰 *Общий баланс семьи "{family_name}": {total}₽*', parse_mode='Markdown')
 
 # --- ЗАПУСК БОТА ---
 if __name__ == '__main__':
